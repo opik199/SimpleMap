@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Simple Map</title>
+		<link rel = "stylesheet" href = "./lib/leaflet-1.7.1/leaflet.css"/>
+		<link rel="stylesheet" href="./lib/leaflet.contextmenu.css"/>
+		<script src="./lib/jquery-3.5.1.min.js"></script>
+		<script src = "./lib/leaflet-1.7.1/leaflet.js"></script>
+		<script src="./lib/leaflet.contextmenu.js"></script>
+	</head>
+	<body>
+		<div id="map" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></div>
+		<script>
+		function remove (e) {
+			//TODO
+		}
+
+		function DiscardLine (modeClick) {
+			if (lineCoords.length > 0) {
+				var answer = confirm('Discard line?');
+				if (answer)
+				{
+					map.removeLayer(startMarker);
+					lineCoords = [];
+
+					mode = modeClick;
+				}
+			}
+		}
+
+		function ClearPolyLine () {
+			$.each(polygonMarker, function(index, value) {
+				map.removeLayer(polygonMarker[index]);
+			});
+			polygonMarker = [];
+
+			map.removeLayer(polygonLine);
+			polygonLine.clearLayers();
+			polyCoords = [];
+		}
+
+		function DiscardPolygon (modeClick) {
+			if (polyCoords.length > 0) {
+				var answer = confirm('Discard polygon?');
+				if (answer)
+				{
+					ClearPolyLine();
+
+					mode = modeClick;
+				}
+			}
+		}
+
+		function CompletePolygon (e) {
+			if (polyCoords.length > 1) { // polygon min has 3 coord
+				// completing polygon
+				var newPolygon = L.polygon(polyCoords);
+				newPolygonArr.push(polyCoords);
+				polygonLayer.addData(newPolygon.toGeoJSON());
+
+				ClearPolyLine();
+				mode = 0;
+			}
+		}
+
+		function PointMode (e) {
+			switch(mode) {
+				case 1: mode = 0; break;
+				case 2: DiscardLine(1); break;
+				case 3: DiscardPolygon(1); break;
+				default: mode = 1; break;
+			}
+		}
+
+		function LineMode (e) {
+			switch(mode) {
+				case 2: mode = 0; break;
+				case 3: DiscardPolygon(2); break;
+				default: mode = 2; break;
+			}
+		}
+
+		function PolygonMode (e) {
+			switch(mode) {
+				case 2: DiscardLine(3); break;
+				case 3: CompletePolygon(e); break;
+				default: mode = 3; break;
+			}
+		}
+
+		function saveMarker (e) {
+			// Get new Points Marker
+			var newMarkerList = [];
+			$(newPointArr).each(function () {
+				var marker = {
+				   id: 0,
+				   nama: "",
+				   lat: $(this)[0],
+				   lng: $(this)[1]
+				};
+
+				newMarkerList.push(marker);
+			});
+
+			if (newMarkerList.length > 0) {
+				// Save Points Marker
+				var sendInfo = {marker : newMarkerList};
+
+				$.ajax({
+					type: "POST",
+					url: "http://localhost:1234/api/point",
+					dataType: "JSON",
+					data: sendInfo,
+					success: function (response) {
+						newPointArr = [];
+						alert("Point Map marker updated");
+					}
+				});
+			}
+
+			// Get new Lines Marker
+			var newLineList = [];
+			$(newLineArr).each(function () {
+				var newPointList = [];
+				$(this).each(function () {
+					newPointList.push({lat: $(this)[0], lng: $(this)[1]});
+				});
+
+				var line = {
+				   id: 0,
+				   nama: "",
+				   coor: newPointList
+				};
+
+				newLineList.push(line);
+			});
+
+			if (newLineList.length > 0) {
+				// Save Lines Marker
+				sendInfo = {marker : newLineList};
+
+				$.ajax({
+					type: "POST",
+					url: "http://localhost:1234/api/line",
+					dataType: "JSON",
+					data: sendInfo,
+					success: function (response) {
+						newLineArr = [];
+						alert("Line Map marker updated");
+					}
+				});
+			}
+
+			// Get new Polygons Marker
+			var newPolyList = [];
+			$(newPolygonArr).each(function () {
+				var newPointList = [];
+				$(this).each(function () {
+					newPointList.push({lat: $(this)[0], lng: $(this)[1]});
+				});
+
+				var polygon = {
+				   id: 0,
+				   nama: "",
+				   coor: newPointList
+				};
+
+				newPolyList.push(polygon);
+			});
+
+			if (newPolyList.length > 0) {
+				// Save new Polygons Marker
+				sendInfo = {marker : newPolyList};
+
+				$.ajax({
+					type: "POST",
+					url: "http://localhost:1234/api/polygon",
+					dataType: "JSON",
+					data: sendInfo,
+					success: function (response) {
+						<!-- newPolygonArr = []; -->
+						alert("Polygon Map marker updated");
+					}
+				});
+			}
+		}
+
+		function showCoordinates (e) {
+			alert(e.latlng);
+		}
+
+		function centerMap (e) {
+			map.panTo(e.latlng);
+		}
+
+		function zoomIn (e) {
+			map.zoomIn();
+		}
+
+		function zoomOut (e) {
+			map.zoomOut();
+		}
+
+		function getMarkers() {
+			$.ajax({
+				type: "GET",
+				url: "http://localhost:1234/api/point",
+				dataType: "JSON",
+				cache: false,
+				success: function (response) {
+					$(response).each(function () {
+						var responseData = $(this);
+
+						var newMarker = L.marker([responseData[0].Geom.coordinates[0],
+												responseData[0].Geom.coordinates[1]], {
+							id: responseData[0].id,
+							contextmenu: true,
+							popupContent: $(this)[0].Nama,
+							onEachFeature: onEachFeature,
+							contextmenuItems: [{
+								text: 'Remove Marker',
+								callback: remove,
+								index: 0
+							}, {
+								separator: true,
+								index: 1
+							}]
+						});//.bindPopup(responseData[0].Nama);
+
+						pointLayer.addData(newMarker.toGeoJSON());
+					});
+				}
+			});
+
+			$.ajax({
+				type: "GET",
+				url: "http://localhost:1234/api/line",
+				dataType: "JSON",
+				cache: false,
+				success: function (response) {
+					$(response).each(function () {
+						var coor = $(this)[0].Geom.coordinates;
+						var newLine = L.polyline([[coor[0][0], coor[0][1]],
+												[coor[1][0], coor[1][1]]], {
+							textmenu: true,
+							popupContent: $(this)[0].Nama,
+							onEachFeature: onEachFeature,
+							contextmenuItems: [{
+								text: 'Remove Marker',
+								callback: remove,
+								index: 0
+							}, {
+								separator: true,
+								index: 1
+							}]
+						});//.bindPopup("<b>"+$(this)[0].Nama+"</b>");
+
+						lineLayer.addData(newLine.toGeoJSON());
+					});
+				}
+			});
+		}
+
+		function onEachFeature(feature, layer) {
+			// does this feature have a property named popupContent?
+			if (feature.properties && feature.properties.popupContent) {
+				layer.bindPopup(feature.properties.popupContent);
+			}
+		}
+
+		// Creating a Layer object
+		var osm = new L.TileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {id: 'MapID', attribution: "OSM ©Taufiq 2020"});
+		var OpenTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {id: 'MapID', attribution: "Open Topo ©Taufiq 2020", maxZoom: 17});
+		var Esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {id: 'MapID', attribution: "ESRI ©Taufiq 2020"});
+
+		var mode = 0, startMarker, polygonLine = L.geoJSON(), polygonMarker = [];
+		var lineCoords = [], polyCoords = []; // Temporary marker
+		var newPointArr = [], newLineArr = [], newPolygonArr = []; // new marker
+		var pointLayer = L.geoJSON();
+		var delPointLayer = [];
+		var lineLayer = L.geoJSON();
+		var polygonLayer = L.geoJSON();
+
+		// Creating a map object
+		var map = L.map('map', {
+			center: new L.LatLng(-6.233682, 106.821591),//816666
+			zoom: 15,
+			layers: [osm, pointLayer, lineLayer, polygonLayer],
+			contextmenu: true,
+			contextmenuWidth: 140,
+			contextmenuItems: [{
+					text: 'Remove Marker',
+					callback: remove,
+				}, '-', {
+					text: 'Mode',
+				}, {
+					text: 'Point',
+					icon: mode == 1? 'images/check.png': 'images/uncheck.png',
+					callback: PointMode
+				}, {
+					text: 'Line',
+					icon: mode == 2? 'images/check.png': 'images/uncheck.png',
+					callback: LineMode
+				}, {
+					text: 'Polygon',
+					icon: mode == 3? 'images/check.png': 'images/uncheck.png',
+					callback: PolygonMode
+				}, '-', {
+					text: 'Show coordinates',
+					callback: showCoordinates
+				}, '-', {
+					text: 'Save Marker',
+					callback: saveMarker
+				}, {
+					text: 'Center map here',
+					callback: centerMap
+				}, '-', {
+					text: 'Zoom in',
+					icon: 'images/zoom-in.png',
+					callback: zoomIn
+				}, {
+					text: 'Zoom out',
+					icon: 'images/zoom-out.png',
+					callback: zoomOut
+				}]
+		});
+
+		var baseMaps = {
+			"Open Street Map": osm,
+			"OpenTopoMap": OpenTopoMap,
+			"Esri": Esri
+		};
+
+		var overlayMaps = {
+			"Point": pointLayer
+			,"Line": lineLayer
+			,"Polygon": polygonLayer
+		};
+
+		var mapControl = L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+		map.on("click", function(e) {
+			if (mode == 1) {
+				var latLng = [e.latlng.lat, e.latlng.lng];
+				var newMarker = L.marker(latLng, {
+					contextmenu: true,
+					contextmenuItems: [{
+						text: 'Remove Marker',
+						<!-- callback: remove, -->
+						index: 0
+					}, {
+						separator: true,
+						index: 1
+					}]
+				});
+				newPointArr.push(latLng);
+				pointLayer.addData(newMarker.toGeoJSON());
+			} else if (mode == 2) {
+				var latLng = [e.latlng.lat, e.latlng.lng];
+				if (lineCoords.length == 0) { // point start
+					startMarker = L.circleMarker(latLng, {
+						radius: 5, color: 'red', opacity: 1.0, fillOpacity: 1.0
+					});
+					lineCoords.push(latLng);
+					map.addLayer(startMarker);
+					startMarker.addTo(map);
+				} else {
+					var newLine = L.polyline([[lineCoords[0][0], lineCoords[0][1]], latLng], {
+							textmenu: true,
+							contextmenuItems: [{
+								text: 'Remove Marker',
+								callback: remove,
+								index: 0
+							}, {
+								separator: true,
+								index: 1
+							}]
+						});//.bindPopup("<b>"+$(this)[0].Nama+"</b>");
+
+					newLineArr.push([[lineCoords[0][0], lineCoords[0][1]], latLng]);
+					lineLayer.addData(newLine.toGeoJSON());
+
+					lineCoords = [];
+					map.removeLayer(startMarker);
+					mode = 0;
+				}
+			} else if (mode == 3) {
+				var latLng = [e.latlng.lat, e.latlng.lng];
+				if (polyCoords.length == 0) { // point start
+					startMarker = L.circleMarker(latLng, {
+						radius: 5, color: 'red', opacity: 1.0, fillOpacity: 1.0
+					});
+					polygonMarker.push(startMarker);
+
+					polyCoords.push(latLng);
+					startMarker.addTo(map);
+				} else {
+					marker = L.circleMarker(latLng, {
+						radius: 5, color: 'red', opacity: 1.0, fillOpacity: 1.0
+					});
+					polygonMarker.push(marker);
+					marker.addTo(map);
+
+					var lastMarker = polyCoords.length - 1;
+					var newLine = L.polyline([[polyCoords[lastMarker][0], polyCoords[lastMarker][1]], latLng]);
+					polygonLine.addData(newLine.toGeoJSON());
+
+					polyCoords.push(latLng);
+					map.addLayer(polygonLine);
+				}
+			}
+		});
+
+		getMarkers();
+		</script>
+	</body>
+</html>
